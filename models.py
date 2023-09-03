@@ -125,3 +125,10 @@ def roll_iqr_model(data, threshold=3):
     return pd.Series(anomalies), bounds
 
 
+df = pd.read_csv('data/Data.csv', sep=';')
+
+series = df.x013
+
+an, bds = roll_iqr_model(series, threshold=2)
+
+anomalies_plot(series, an, bds)
