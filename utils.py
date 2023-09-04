@@ -56,8 +56,17 @@ def anomalies_plot(data, anomalies, bounds: namedtuple):
 
     plt.plot(data)
 
-    plt.plot(bounds.high, color='red')
-    plt.plot(bounds.low, color='red')
+    if type(bounds.high) == np.ndarray:
+
+        plt.plot(bounds.high, color='red')
+
+        plt.plot(bounds.low, color='red')
+
+    else:
+
+        plt.axhline(bounds.high, color='red')
+
+        plt.axhline(bounds.low, color='red')
 
     for i in range(len(anomalies)):
 
