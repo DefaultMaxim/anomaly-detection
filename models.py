@@ -1,127 +1,109 @@
 import numpy as np
 import pandas as pd
 from collections import namedtuple
-import matplotlib.pyplot as plt
-from utils import anomalies_plot
 
 
-def const_std_model(data, threshold: int = 3):
+def std_model(data, threshold: int = 3, roll: bool = False):
 
     """
 
     detect anomalies based on threshold*sigma rule
     :param data: data
     :param threshold: std threshold (usual from 2 to 5)
+    :param roll: whether rolling model or not
     :return: anomalies : dataframe,
     bounds: namedtuple(high, low)
 
     """
 
-    mean = data.mean()
-    std = data.std()
+    if roll:
 
-    high = mean + threshold*std
-    low = mean - threshold*std
+        anomalies = np.zeros(len(data), dtype='bool')
 
-    boarders = namedtuple('Bounds', ['high', 'low'])
-    bounds = boarders(high, low)
+        high = np.zeros(len(data), dtype='float')
+        low = np.zeros(len(data), dtype='float')
 
-    anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
+        for key, _ in enumerate(data):
 
-    return pd.Series(anomalies), bounds
+            mean = data[:key].mean()
+            std = data[:key].std()
+
+            high[key] = mean + threshold * std
+            low[key] = mean - threshold * std
+
+            if data[key] > high[key] or data[key] < low[key]:
+                anomalies[key] = True
+
+        ntup = namedtuple('Bounds', ['high', 'low'])
+
+        bounds = ntup(high, low)
+
+        return pd.Series(anomalies), bounds
+
+    else:
+
+        mean = data.mean()
+        std = data.std()
+
+        high = mean + threshold*std
+        low = mean - threshold*std
+
+        boarders = namedtuple('Bounds', ['high', 'low'])
+        bounds = boarders(high, low)
+
+        anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
+
+        return pd.Series(anomalies), bounds
 
 
-def const_iqr_model(data, threshold=3):
+def iqr_model(data, threshold=3, roll: bool = False):
 
     """
 
     inter quartile range model
     :param data:data
     :param threshold:model threshold
+    :param roll: True/False whether rolling model or not
     :return:anomalies, bounds
 
     """
 
-    iqr = data.quantile(0.75) - data.quantile(0.25)
+    if roll:
 
-    high = data.quantile(0.75) + (iqr * threshold)
-    low = data.quantile(0.25) - (iqr * threshold)
+        anomalies = np.zeros(len(data), dtype='bool')
 
-    ntup = namedtuple('Bounds', ['high', 'low'])
+        high = np.zeros(len(data), dtype='float')
+        low = np.zeros(len(data), dtype='float')
 
-    bounds = ntup(high, low)
+        for key, _ in enumerate(data):
 
-    anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
+            iqr = data[:key].quantile(0.75) - data[:key].quantile(0.25)
 
-    return pd.Series(anomalies), bounds
+            high[key] = data[:key].quantile(0.75) + (iqr * threshold)
 
+            low[key] = data[:key].quantile(0.25) - (iqr * threshold)
 
-def roll_std_model(data, threshold=3):
+            if data[key] > high[key] or data[key] < low[key]:
 
-    """
-    Rolling std model, std changes over time
-    :param data: data
-    :param threshold: model threshold
-    :return: True/False series of anomalies
+                anomalies[key] = True
 
-    """
+        ntup = namedtuple('Bounds', ['high', 'low'])
 
-    anomalies = np.array([False]*len(data))
+        bounds = ntup(high, low)
 
-    high = np.array([0] * len(data), dtype='float')
-    low = np.array([0] * len(data), dtype='float')
+        return pd.Series(anomalies), bounds
 
-    for key, _ in enumerate(data):
+    else:
 
-        mean = data[:key].mean()
-        std = data[:key].std()
+        iqr = data.quantile(0.75) - data.quantile(0.25)
 
-        high[key] = mean + threshold * std
-        low[key] = mean - threshold * std
+        high = data.quantile(0.75) + (iqr * threshold)
+        low = data.quantile(0.25) - (iqr * threshold)
 
-        if data[key] > high[key] or data[key] < low[key]:
+        ntup = namedtuple('Bounds', ['high', 'low'])
 
-            anomalies[key] = True
+        bounds = ntup(high, low)
 
-    ntup = namedtuple('Bounds', ['high', 'low'])
+        anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
 
-    bounds = ntup(high, low)
-
-    return pd.Series(anomalies), bounds
-
-
-def roll_iqr_model(data, threshold=3):
-
-    """
-
-    Rolling iqr model where iqr changes over time
-    :param data: data
-    :param threshold: model threshold
-    :return: True/False series of anomalies
-
-    """
-
-    anomalies = np.array([False] * len(data))
-
-    high = np.array([0]*len(data), dtype='float')
-    low = np.array([0]*len(data), dtype='float')
-
-    for key, _ in enumerate(data):
-
-        iqr = data[:key].quantile(0.75) - data[:key].quantile(0.25)
-
-        high[key] = data[:key].quantile(0.75) + (iqr * threshold)
-
-        low[key] = data[:key].quantile(0.25) - (iqr * threshold)
-
-        if data[key] > high[key] or data[key] < low[key]:
-
-            anomalies[key] = True
-
-    ntup = namedtuple('Bounds', ['high', 'low'])
-
-    bounds = ntup(high, low)
-
-    return pd.Series(anomalies), bounds
-
-
+        return pd.Series(anomalies), bounds
