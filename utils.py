@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from collections import namedtuple
+from copy import deepcopy as dc
+from sklearn.preprocessing import MinMaxScaler
+import torch
 
 
 def get_column_outliers(data, model, threshold=3):
@@ -75,3 +78,18 @@ def anomalies_plot(data, anomalies, bounds: namedtuple):
             ax.scatter(i, data[i], color="red", marker='x', label='1880-1999')
 
     plt.show()
+
+
+def prepare_dataframe_for_lstm(data, n_steps):
+    data = dc(data)
+
+    data.set_index('Time', inplace=True)
+
+    for i in range(1, n_steps + 1):
+        data[f'param(t-{i})'] = data.iloc[:, 0].shift(i)
+
+    data.dropna(inplace=True)
+
+    return data
+
+

@@ -1,10 +1,17 @@
 import numpy as np
 import pandas as pd
 from collections import namedtuple
+import torch
+import torch.optim as optim
+import torch.nn as nn
+from sklearn.preprocessing import MinMaxScaler
+from torch.utils.data import Dataset, DataLoader
+from copy import deepcopy as dc
+import utils
+import matplotlib.pyplot as plt
 
 
 def std_model(data, threshold: int = 3, roll: bool = False):
-
     """
 
     detect anomalies based on threshold*sigma rule
@@ -45,8 +52,8 @@ def std_model(data, threshold: int = 3, roll: bool = False):
         mean = data.mean()
         std = data.std()
 
-        high = mean + threshold*std
-        low = mean - threshold*std
+        high = mean + threshold * std
+        low = mean - threshold * std
 
         boarders = namedtuple('Bounds', ['high', 'low'])
         bounds = boarders(high, low)
@@ -57,7 +64,6 @@ def std_model(data, threshold: int = 3, roll: bool = False):
 
 
 def iqr_model(data, threshold=3, roll: bool = False):
-
     """
 
     inter quartile range model
@@ -84,7 +90,6 @@ def iqr_model(data, threshold=3, roll: bool = False):
             low[key] = data[:key].quantile(0.25) - (iqr * threshold)
 
             if data[key] > high[key] or data[key] < low[key]:
-
                 anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
@@ -107,3 +112,200 @@ def iqr_model(data, threshold=3, roll: bool = False):
         anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
 
         return pd.Series(anomalies), bounds
+
+
+class ModelLSTM(nn.Module):
+    """
+    This class contains __init__ and forward functions of LSTM model for next anomaly detection
+    """
+
+    def __init__(self, input_size, hidden_size, num_layers):
+        super(ModelLSTM, self).__init__()
+
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()
+
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).requires_grad_()
+
+        out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
+
+        out = self.fc(out[:, -1, :])
+
+        return out
+
+
+class TimeSeriesDataset(Dataset):
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, i):
+        return self.X[i], self.y[i]
+
+
+dataset = pd.read_csv('data/Data.csv', sep=';')
+df = dataset[['Time', 'x013']]
+
+
+class DataPrep(TimeSeriesDataset):
+
+    def __init__(self, data, split_index: int, n_steps: int = 5):
+        super(TimeSeriesDataset, self).__init__()
+
+        self.data = data
+
+        self.n_steps = n_steps
+
+        self.split_index = split_index
+
+        shifted_df = utils.prepare_dataframe_for_lstm(df, n_steps)
+        shifted_df_as_np = shifted_df.to_numpy()
+
+        self.scaler = MinMaxScaler(feature_range=(-1, 1))
+        shifted_df_as_np = self.scaler.fit_transform(shifted_df_as_np)
+
+        X = shifted_df_as_np[:, 1:]
+        y = shifted_df_as_np[:, 0]
+
+        X = dc(np.flip(X, axis=1))
+
+        X_train = X[:split_index]
+        X_test = X[split_index:]
+
+        y_train = y[:split_index]
+        y_test = y[split_index:]
+
+        X_train = X_train.reshape((-1, n_steps, 1))
+        X_test = X_test.reshape((-1, n_steps, 1))
+
+        y_train = y_train.reshape((-1, 1))
+        y_test = y_test.reshape((-1, 1))
+
+        self.X_train = torch.tensor(X_train).float()
+        self.y_train = torch.tensor(y_train).float()
+
+        self.X_test = torch.tensor(X_test).float()
+        self.y_test = torch.tensor(y_test).float()
+
+        self.train_dataset = TimeSeriesDataset(X_train, y_train)
+        self.test_dataset = TimeSeriesDataset(X_test, y_test)
+
+        self.batch_size = 16
+
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
+
+
+model = ModelLSTM(1, 4, 2)
+dp = DataPrep(df, split_index=int(len(df)*0.7))
+
+
+def train_one_epoch(nn_model):
+    nn_model.train(True)
+
+    running_loss = 0.0
+
+    for batch_index, batch in enumerate(dp.train_loader):
+        x_batch, y_batch = batch[0].float(), batch[1].float()
+
+        output = nn_model(x_batch.float())
+        loss = loss_function(output, y_batch.float())
+        running_loss += loss.item()
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if batch_index % 100 == 99:  # print every 100 batches
+            avg_loss_across_batches = running_loss / 100
+            print('Batch {0}, Loss: {1:.3f}'.format(batch_index + 1,
+                                                    avg_loss_across_batches))
+            running_loss = 0.0
+    print()
+
+
+def validate_one_epoch(nn_model):
+    nn_model.train(False)
+    running_loss = 0.0
+
+    for batch_index, batch in enumerate(dp.test_loader):
+        x_batch, y_batch = batch[0].float(), batch[1].float()
+
+        with torch.no_grad():
+            output = nn_model(x_batch.float())
+            loss = loss_function(output, y_batch.float())
+            running_loss += loss.item()
+
+    avg_loss_across_batches = running_loss / len(dp.test_loader)
+
+    print('Val Loss: {0:.3f}'.format(avg_loss_across_batches))
+    print('***************************************************')
+    print()
+
+
+learning_rate = 0.001
+num_epochs = 5
+loss_function = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+train_loader, test_loader = dp.train_loader, dp.test_loader
+
+for epoch in range(num_epochs):
+    print(f'Epoch: {epoch + 1}')
+    train_one_epoch(model)
+    validate_one_epoch(model)
+
+with torch.no_grad():
+    predicted = model(dp.X_train).numpy()
+
+plt.plot(dp.y_train, label='Actual')
+plt.plot(predicted, label='Predicted')
+plt.xlabel('Day')
+plt.ylabel('Y')
+plt.legend()
+plt.show()
+
+train_predictions = predicted.flatten()
+
+dummies = np.zeros((dp.X_train.shape[0], dp.n_steps+1))
+dummies[:, 0] = train_predictions
+dummies = dp.scaler.inverse_transform(dummies)
+
+train_predictions = dc(dummies[:, 0])
+
+dummies = np.zeros((dp.X_train.shape[0], dp.n_steps+1))
+dummies[:, 0] = dp.y_train.flatten()
+dummies = dp.scaler.inverse_transform(dummies)
+
+new_y_train = dc(dummies[:, 0])
+
+test_predictions = model(dp.X_test).detach().numpy().flatten()
+
+dummies = np.zeros((dp.X_test.shape[0], dp.n_steps+1))
+dummies[:, 0] = test_predictions
+dummies = dp.scaler.inverse_transform(dummies)
+
+test_predictions = dc(dummies[:, 0])
+
+dummies = np.zeros((dp.X_test.shape[0], dp.n_steps+1))
+dummies[:, 0] = dp.y_test.flatten()
+dummies = dp.scaler.inverse_transform(dummies)
+
+new_y_test = dc(dummies[:, 0])
+
+plt.plot(new_y_test, label='Actual')
+plt.plot(test_predictions, label='Predicted')
+plt.xlabel('Day')
+plt.ylabel('Close')
+plt.legend()
+plt.show()
