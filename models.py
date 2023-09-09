@@ -280,13 +280,6 @@ for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(df, split_inde
 
         predicted = model(dd[i].X_train).numpy()
 
-    plt.plot(dd[i].y_train, label='Actual')
-    plt.plot(predicted, label='Predicted')
-    plt.xlabel('Day')
-    plt.ylabel('Y')
-    plt.legend()
-    plt.show()
-
     train_predictions = predicted.flatten()
 
     dummies = np.zeros((dd[i].X_train.shape[0], dd[i].n_steps+1))
@@ -315,12 +308,19 @@ for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(df, split_inde
 
     new_y_test = dc(dummies[:, 0])
 
-    plt.plot(new_y_test, label='Actual')
-    plt.plot(test_predictions, label='Predicted')
-    plt.xlabel('Day')
-    plt.ylabel('Y')
-    plt.legend()
-    plt.show()
+    # plt.plot(dd[i].y_train, label='Actual')
+    # plt.plot(predicted, label='Predicted')
+    # plt.xlabel('Day')
+    # plt.ylabel('Y')
+    # plt.legend()
+    # plt.show()
+    #
+    # plt.plot(new_y_test, label='Actual')
+    # plt.plot(test_predictions, label='Predicted')
+    # plt.xlabel('Day')
+    # plt.ylabel('Y')
+    # plt.legend()
+    # plt.show()
 
     train_losses.append(mape(new_y_train, train_predictions)*100)
     test_losses.append(mape(new_y_test, test_predictions)*100)
@@ -331,11 +331,23 @@ for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(df, split_inde
 train_losses = np.array(train_losses)
 test_losses = np.array(test_losses)
 
+signs = []
+
 for i in range(1, len(train_losses)):
-    mean = abs(train_losses[:i] - test_losses[:i]).mean()
-    std = abs(train_losses[:i] - test_losses[:i]).std()
+    mean = abs(train_losses - test_losses).mean()
+    std = abs(train_losses - test_losses).std()
     if abs(train_losses[i] - test_losses[i]) > mean + 3*std:
         print(f'{i}, significant')
+        signs.append(i)
+
+# вот у тя выдаются индексы теста теперь по каждому из них делай массив разностей, потом помечай аномалии, готово.
+# еще надо обернуть это все в функцию или класс по хорошему
+signs = np.array(signs)
+for i, (train_indexes, test_indexes) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
+    for j in signs:
+        if i == j:
+            print(train_indexes, test_indexes)
+
 
 print(f'Train MAPE: {train_losses}')
 print(f'Test MAPE: {test_losses}')
