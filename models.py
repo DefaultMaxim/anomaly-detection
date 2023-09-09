@@ -9,6 +9,8 @@ from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy as dc
 import utils
 import matplotlib.pyplot as plt
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_percentage_error as mape
 
 
 def std_model(data, threshold: int = 3, roll: bool = False):
@@ -38,7 +40,7 @@ def std_model(data, threshold: int = 3, roll: bool = False):
             high[key] = mean + threshold * std
             low[key] = mean - threshold * std
 
-            if data[key] > high[key] or data[key] < low[key]:
+            if data.iloc[key].values > high[key] or data.iloc[key].values < low[key]:
                 anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
@@ -89,7 +91,7 @@ def iqr_model(data, threshold=3, roll: bool = False):
 
             low[key] = data[:key].quantile(0.25) - (iqr * threshold)
 
-            if data[key] > high[key] or data[key] < low[key]:
+            if data.iloc[key].values > high[key] or data.iloc[key].values < low[key]:
                 anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
@@ -154,10 +156,6 @@ class TimeSeriesDataset(Dataset):
         return self.X[i], self.y[i]
 
 
-dataset = pd.read_csv('data/Data.csv', sep=';')
-df = dataset[['Time', 'x013']]
-
-
 class DataPrep(TimeSeriesDataset):
 
     def __init__(self, data, split_index: int, n_steps: int = 5):
@@ -169,7 +167,7 @@ class DataPrep(TimeSeriesDataset):
 
         self.split_index = split_index
 
-        shifted_df = utils.prepare_dataframe_for_lstm(df, n_steps)
+        shifted_df = utils.prepare_dataframe_for_lstm(data, n_steps)
         shifted_df_as_np = shifted_df.to_numpy()
 
         self.scaler = MinMaxScaler(feature_range=(-1, 1))
@@ -178,7 +176,7 @@ class DataPrep(TimeSeriesDataset):
         X = shifted_df_as_np[:, 1:]
         y = shifted_df_as_np[:, 0]
 
-        X = dc(np.flip(X, axis=1))
+        self.X = dc(np.flip(X, axis=1))
 
         X_train = X[:split_index]
         X_test = X[split_index:]
@@ -207,16 +205,17 @@ class DataPrep(TimeSeriesDataset):
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
 
-model = ModelLSTM(1, 4, 2)
-dp = DataPrep(df, split_index=int(len(df)*0.7))
+dataset = pd.read_csv('data/Data.csv', sep=';')
+df = dataset[['Time', 'x013']]
+model = ModelLSTM(1, 8, 4)
 
 
-def train_one_epoch(nn_model):
+def train_one_epoch(nn_model, train_loader):
     nn_model.train(True)
 
     running_loss = 0.0
 
-    for batch_index, batch in enumerate(dp.train_loader):
+    for batch_index, batch in enumerate(train_loader):
         x_batch, y_batch = batch[0].float(), batch[1].float()
 
         output = nn_model(x_batch.float())
@@ -235,11 +234,11 @@ def train_one_epoch(nn_model):
     print()
 
 
-def validate_one_epoch(nn_model):
+def validate_one_epoch(nn_model, test_loader):
     nn_model.train(False)
     running_loss = 0.0
 
-    for batch_index, batch in enumerate(dp.test_loader):
+    for batch_index, batch in enumerate(test_loader):
         x_batch, y_batch = batch[0].float(), batch[1].float()
 
         with torch.no_grad():
@@ -247,7 +246,7 @@ def validate_one_epoch(nn_model):
             loss = loss_function(output, y_batch.float())
             running_loss += loss.item()
 
-    avg_loss_across_batches = running_loss / len(dp.test_loader)
+    avg_loss_across_batches = running_loss / len(test_loader)
 
     print('Val Loss: {0:.3f}'.format(avg_loss_across_batches))
     print('***************************************************')
@@ -256,56 +255,88 @@ def validate_one_epoch(nn_model):
 
 learning_rate = 0.001
 num_epochs = 5
+
 loss_function = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-train_loader, test_loader = dp.train_loader, dp.test_loader
 
-for epoch in range(num_epochs):
-    print(f'Epoch: {epoch + 1}')
-    train_one_epoch(model)
-    validate_one_epoch(model)
+tscv = TimeSeriesSplit(n_splits=5)
 
-with torch.no_grad():
-    predicted = model(dp.X_train).numpy()
+dd = []
 
-plt.plot(dp.y_train, label='Actual')
-plt.plot(predicted, label='Predicted')
-plt.xlabel('Day')
-plt.ylabel('Y')
-plt.legend()
-plt.show()
+train_losses = []
+test_losses = []
 
-train_predictions = predicted.flatten()
+for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
 
-dummies = np.zeros((dp.X_train.shape[0], dp.n_steps+1))
-dummies[:, 0] = train_predictions
-dummies = dp.scaler.inverse_transform(dummies)
+    dd.append(DataPrep(df[:test_index[-1]], train_index[-1]))
 
-train_predictions = dc(dummies[:, 0])
+    for epoch in range(num_epochs):
 
-dummies = np.zeros((dp.X_train.shape[0], dp.n_steps+1))
-dummies[:, 0] = dp.y_train.flatten()
-dummies = dp.scaler.inverse_transform(dummies)
+        print(f'Epoch: {epoch + 1}')
+        train_one_epoch(model, dd[i].train_loader)
+        validate_one_epoch(model, dd[i].test_loader)
 
-new_y_train = dc(dummies[:, 0])
+    with torch.no_grad():
 
-test_predictions = model(dp.X_test).detach().numpy().flatten()
+        predicted = model(dd[i].X_train).numpy()
 
-dummies = np.zeros((dp.X_test.shape[0], dp.n_steps+1))
-dummies[:, 0] = test_predictions
-dummies = dp.scaler.inverse_transform(dummies)
+    plt.plot(dd[i].y_train, label='Actual')
+    plt.plot(predicted, label='Predicted')
+    plt.xlabel('Day')
+    plt.ylabel('Y')
+    plt.legend()
+    plt.show()
 
-test_predictions = dc(dummies[:, 0])
+    train_predictions = predicted.flatten()
 
-dummies = np.zeros((dp.X_test.shape[0], dp.n_steps+1))
-dummies[:, 0] = dp.y_test.flatten()
-dummies = dp.scaler.inverse_transform(dummies)
+    dummies = np.zeros((dd[i].X_train.shape[0], dd[i].n_steps+1))
+    dummies[:, 0] = train_predictions
+    dummies = dd[i].scaler.inverse_transform(dummies)
 
-new_y_test = dc(dummies[:, 0])
+    train_predictions = dc(dummies[:, 0])
 
-plt.plot(new_y_test, label='Actual')
-plt.plot(test_predictions, label='Predicted')
-plt.xlabel('Day')
-plt.ylabel('Close')
-plt.legend()
+    dummies = np.zeros((dd[i].X_train.shape[0], dd[i].n_steps+1))
+    dummies[:, 0] = dd[i].y_train.flatten()
+    dummies = dd[i].scaler.inverse_transform(dummies)
+
+    new_y_train = dc(dummies[:, 0])
+
+    test_predictions = model(dd[i].X_test).detach().numpy().flatten()
+
+    dummies = np.zeros((dd[i].X_test.shape[0], dd[i].n_steps+1))
+    dummies[:, 0] = test_predictions
+    dummies = dd[i].scaler.inverse_transform(dummies)
+
+    test_predictions = dc(dummies[:, 0])
+
+    dummies = np.zeros((dd[i].X_test.shape[0], dd[i].n_steps+1))
+    dummies[:, 0] = dd[i].y_test.flatten()
+    dummies = dd[i].scaler.inverse_transform(dummies)
+
+    new_y_test = dc(dummies[:, 0])
+
+    plt.plot(new_y_test, label='Actual')
+    plt.plot(test_predictions, label='Predicted')
+    plt.xlabel('Day')
+    plt.ylabel('Y')
+    plt.legend()
+    plt.show()
+
+    train_losses.append(mape(new_y_train, train_predictions)*100)
+    test_losses.append(mape(new_y_test, test_predictions)*100)
+
+    print(f'Train MAPE: {mape(new_y_train, train_predictions)}, '
+          f'Test MAPE: {mape(new_y_test, test_predictions)}')
+
+train_losses = np.array(train_losses)
+test_losses = np.array(test_losses)
+
+for i in range(1, len(train_losses)):
+    mean = abs(train_losses[:i] - test_losses[:i]).mean()
+    std = abs(train_losses[:i] - test_losses[:i]).std()
+    if abs(train_losses[i] - test_losses[i]) > mean + 3*std:
+        print(f'{i}, significant')
+
+print(f'Train MAPE: {train_losses}')
+print(f'Test MAPE: {test_losses}')
 plt.show()
