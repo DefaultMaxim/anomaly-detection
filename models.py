@@ -15,14 +15,12 @@ from sklearn.metrics import mean_absolute_percentage_error as mape
 
 def std_model(data, threshold: int = 3, roll: bool = False):
     """
-
     detect anomalies based on threshold*sigma rule
     :param data: data
     :param threshold: std threshold (usual from 2 to 5)
     :param roll: whether rolling model or not
     :return: anomalies : dataframe,
     bounds: namedtuple(high, low)
-
     """
 
     if roll:
@@ -34,13 +32,13 @@ def std_model(data, threshold: int = 3, roll: bool = False):
 
         for key, _ in enumerate(data):
 
-            mean = data[:key].mean()
-            std = data[:key].std()
+            mean = data[:key + 1].mean()
+            std = data[:key + 1].std()
 
             high[key] = mean + threshold * std
             low[key] = mean - threshold * std
 
-            if data.iloc[key].values > high[key] or data.iloc[key].values < low[key]:
+            if data[key] > high[key] or data[key] < low[key]:
                 anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
@@ -85,13 +83,13 @@ def iqr_model(data, threshold=3, roll: bool = False):
 
         for key, _ in enumerate(data):
 
-            iqr = data[:key].quantile(0.75) - data[:key].quantile(0.25)
+            iqr = np.quantile(data[:key + 1], 0.75) - np.quantile(data[:key + 1], 0.25)
 
-            high[key] = data[:key].quantile(0.75) + (iqr * threshold)
+            high[key] = np.quantile(data[:key + 1], 0.75) + (iqr * threshold)
 
-            low[key] = data[:key].quantile(0.25) - (iqr * threshold)
+            low[key] = np.quantile(data[:key + 1], 0.25) - (iqr * threshold)
 
-            if data.iloc[key].values > high[key] or data.iloc[key].values < low[key]:
+            if data[key] > high[key] or data[key] < low[key]:
                 anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
@@ -122,6 +120,7 @@ class ModelLSTM(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, num_layers):
+
         super(ModelLSTM, self).__init__()
 
         self.hidden_size = hidden_size
@@ -373,20 +372,29 @@ class TrainModel(nn.Module, DataPrep):
             act_tests.append(new_y_test)
 
             if plot:
+
                 plt.plot(dd[i].y_train, label='Actual')
                 plt.plot(predicted, label='Predicted')
+
                 plt.title(f'split {i}')
+
                 plt.xlabel('Day')
                 plt.ylabel('Y')
+
                 plt.legend()
+
                 plt.show()
 
                 plt.plot(new_y_test, label='Actual')
                 plt.plot(test_predictions, label='Predicted')
+
                 plt.title(f'split {i}')
+
                 plt.xlabel('Day')
                 plt.ylabel('Y')
+
                 plt.legend()
+
                 plt.show()
 
             train_losses.append(mape(new_y_train, train_predictions) * 100)
@@ -395,13 +403,17 @@ class TrainModel(nn.Module, DataPrep):
             print(f'Train MAPE: {mape(new_y_train, train_predictions)},'
                   f'Test MAPE: {mape(new_y_test, test_predictions)}')
 
+        train_losses = np.array(train_losses)
+        test_losses = np.array(test_losses)
+
         if all_outputs:
 
-            act_trains, pred_trains, act_tests, pred_tests = \
-                act_trains[-1], pred_trains[-1], act_tests[-1], pred_tests[-1]
             return act_trains, pred_trains, act_tests, pred_tests, train_losses, test_losses
 
         else:
+
+            act_trains, pred_trains, act_tests, pred_tests = \
+                act_trains[-1], pred_trains[-1], act_tests[-1], pred_tests[-1]
 
             return act_trains, pred_trains, act_tests, pred_tests, train_losses, test_losses
 
@@ -413,6 +425,7 @@ class TrainModel(nn.Module, DataPrep):
                  loss_function=nn.MSELoss(),
                  plot: bool = False,
                  all_outputs: bool = False):
+
         super().__init__()
 
         self.nn_model = nn_model
@@ -429,43 +442,104 @@ class TrainModel(nn.Module, DataPrep):
 
         self.all_outputs = all_outputs
 
-        self.new_y_train, \
+        self.act_train, \
         self.train_predictions, \
-        self.new_y_test, \
+        self.act_test, \
         self.test_predictions, \
         self.train_losses, \
-        self.test_losses = self.train_model(nn_model, data, num_epochs, n_splits, loss_function, plot, all_outputs)
+        self.test_losses = self.train_model(nn_model,
+                                            data,
+                                            num_epochs,
+                                            n_splits,
+                                            loss_function,
+                                            plot,
+                                            all_outputs)
 
 
 dataset = pd.read_csv('data/Data.csv', sep=';')
 df = dataset[['Time', 'x013']]
 
-test = TrainModel(nn_model=ModelLSTM(1, 5, 4), data=df, num_epochs=5, plot=True)
+# в кратце - данная модель дропает мапе на трейне и на тесте на каждом сплите
+# далее - моделью iqr или std которые выше находим выбросы, запоминаем индексы сплита - это и есть аномалия.
+
+n_splits = 15
+test = TrainModel(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=n_splits, plot=False, all_outputs=True)
 
 print(test.train_losses)
 print(test.test_losses)
 
-# train_losses = np.array(train_losses)
-# test_losses = np.array(test_losses)
-#
-# signs = []
-#
-# for i in range(len(train_losses)):
-#     mean = abs(train_losses - test_losses).mean()
-#     std = abs(train_losses - test_losses).std()
-#     if train_losses[i] - test_losses[i] > mean + 3*std or train_losses[i] - test_losses[i] < mean - 3*std:
-#         print(f'{i}, significant')
-#         signs.append(i)
-#
-# # вот у тя выдаются индексы теста теперь по каждому из них делай массив разностей, потом помечай аномалии, готово.
-# # еще надо обернуть это все в функцию или класс по хорошему
-# signs = np.array(signs)
-# for i, (train_indexes, test_indexes) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
-#     for j in signs:
-#         if i == j:
-#             _, idxs = train_indexes, test_indexes
-#
-#
-# print(f'Train MAPE: {train_losses}')
-# print(f'Test MAPE: {test_losses}')
-# plt.show()
+print(test.test_losses/test.train_losses)
+print(abs(test.test_losses - test.train_losses)) # в качестве меры будет использоваться данное отношение
+
+get_idx_df = test.test_losses/test.train_losses
+
+print(iqr_model(get_idx_df, roll=True))
+res, _ = iqr_model(get_idx_df, roll=True)
+
+split_idx = res[res].index.values
+
+# пофикси не-ролл std
+
+tscv = TimeSeriesSplit(n_splits)
+
+anomaly_idx = []
+
+# Тут все сломается если у тебя не будет ни одного сплит индекса
+
+# ЛАДНО Я СДЕЛАЮ ГЛУПО НО РАБОЧЕ
+
+# ВООБЩЕ ГЭП МОЖЕТ И НЕ СЛУЧИТЬСЯ. НАДО ОБРАБОТАТЬ СЛУЧИЙ КОГДА У НАС ВСЕГО 1 ИДКС или 0
+
+tmp_arr_for_gap = []
+
+for i, (train_idx, test_idx) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
+
+    for j in split_idx:
+
+        if i == j:
+
+            anomaly_idx.extend(test_idx)
+
+            tmp_arr_for_gap.append(test_idx)
+
+if len(split_idx) > 1:
+
+    gap = abs(tmp_arr_for_gap[0][0] - tmp_arr_for_gap[1][0])
+
+anomaly_raw_idx = []
+
+# Случий с двумя индексами обработан вроде
+
+for key, val in enumerate(split_idx):
+
+    data = abs(test.act_test[val] - test.test_predictions[val])
+
+    anomaly_test, _ = std_model(data=data, roll=True)
+
+    if len(split_idx) > 1:
+
+        anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
+
+    utils.anomalies_plot(data,
+                         anomalies=std_model(data, roll=True)[0],
+                         bounds=std_model(data, roll=True)[1])
+
+print(anomaly_raw_idx)
+
+print(anomaly_idx)
+
+print(np.array([anomaly_idx[i] for i in anomaly_raw_idx]))
+
+tmp = np.array([anomaly_idx[i] for i in anomaly_raw_idx])
+
+an = np.zeros(len(df), dtype=float)
+
+for i in tmp:
+    an[i] = True
+
+print(pd.Series(an))
+
+utils.anomalies_plot(data=df.iloc[:, 1],
+                     anomalies=an)
+
+# обернуть все в функцию или класс, впрц рез готов, напиши readme.
