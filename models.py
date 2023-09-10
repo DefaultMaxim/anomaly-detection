@@ -462,6 +462,11 @@ df = dataset[['Time', 'x013']]
 # в кратце - данная модель дропает мапе на трейне и на тесте на каждом сплите
 # далее - моделью iqr или std которые выше находим выбросы, запоминаем индексы сплита - это и есть аномалия.
 
+
+# тут как то сложно все... норм если тресхолд на стд моделе ~ 2, на 3 уже как то плохо работает
+# есть подозрение, что оптимально - 1, надо тестить. Условно под хорошую модель like LSTM(1, 5, 4) можно и 1
+# со сплитами тоже загадка, но надо тестить, оптимально работает с n_splits = 15, Model(1, 2, 1)
+
 n_splits = 15
 test = TrainModel(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=n_splits, plot=False, all_outputs=True)
 
@@ -521,8 +526,8 @@ for key, val in enumerate(split_idx):
         anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
 
     utils.anomalies_plot(data,
-                         anomalies=std_model(data, roll=True)[0],
-                         bounds=std_model(data, roll=True)[1])
+                         anomalies=std_model(data, threshold=2, roll=True)[0],
+                         bounds=std_model(data, threshold=2, roll=True)[1])
 
 print(anomaly_raw_idx)
 
@@ -541,5 +546,9 @@ print(pd.Series(an))
 
 utils.anomalies_plot(data=df.iloc[:, 1],
                      anomalies=an)
+
+# utils.anomalies_plot(data=df.iloc[:, 1],
+#                      anomalies=std_model(data=df.iloc[:, 1], threshold=3, roll=True)[0],
+#                      bounds=std_model(data=df.iloc[:, 1], threshold=3, roll=True)[1])
 
 # обернуть все в функцию или класс, впрц рез готов, напиши readme.
