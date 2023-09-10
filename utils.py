@@ -42,7 +42,7 @@ def anomalies_report(outliers):
           f"Percentage of outliers:   {np.round(100 * sum(outliers) / len(outliers), 4)}%")
 
 
-def anomalies_plot(data, anomalies, bounds: namedtuple):
+def anomalies_plot(data, anomalies, bounds: namedtuple = None):
 
     """
 
@@ -59,17 +59,19 @@ def anomalies_plot(data, anomalies, bounds: namedtuple):
 
     plt.plot(data)
 
-    if type(bounds.high) == np.ndarray:
+    if bounds:
 
-        plt.plot(bounds.high, color='red')
+        if type(bounds.high) == np.ndarray:
 
-        plt.plot(bounds.low, color='red')
+            plt.plot(bounds.high, color='red')
 
-    else:
+            plt.plot(bounds.low, color='red')
 
-        plt.axhline(bounds.high, color='red')
+        else:
 
-        plt.axhline(bounds.low, color='red')
+            plt.axhline(bounds.high, color='red')
+
+            plt.axhline(bounds.low, color='red')
 
     for i in range(len(anomalies)):
 
