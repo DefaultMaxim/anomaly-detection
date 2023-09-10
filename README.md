@@ -26,7 +26,7 @@ Example LSTM-anomaly detection model:
 ---
 1. After we get data, algorithm makes n_splits from it.
 2. On each split from n_splits we make train/test data, and train/validate our model.
-3. On eeach split we compute train mape and test mape, where ratio $\frac{test_mape}{train_mape}$ is outlier (we can check it via iqr or std model) there is anomaly.
+3. On eeach split we compute train mape and test mape, where ratio $\frac{test_{mape}}{train_{mape}}$ is outlier (we can check it via iqr or std model) there is anomaly.
 
 __Example of work std model:__
 
