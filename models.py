@@ -455,10 +455,6 @@ class TrainModel(nn.Module, DataPrep):
                                             plot,
                                             all_outputs)
 
-
-dataset = pd.read_csv('data/Data.csv', sep=';')
-df = dataset[['Time', 'x013']]
-
 # в кратце - данная модель дропает мапе на трейне и на тесте на каждом сплите
 # далее - моделью iqr или std которые выше находим выбросы, запоминаем индексы сплита - это и есть аномалия.
 
@@ -467,88 +463,132 @@ df = dataset[['Time', 'x013']]
 # есть подозрение, что оптимально - 1, надо тестить. Условно под хорошую модель like LSTM(1, 5, 4) можно и 1
 # со сплитами тоже загадка, но надо тестить, оптимально работает с n_splits = 15, Model(1, 2, 1)
 
-n_splits = 15
-test = TrainModel(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=n_splits, plot=False, all_outputs=True)
 
-print(test.train_losses)
-print(test.test_losses)
+class AnomalyLSTM(TrainModel):
 
-print(test.test_losses/test.train_losses)
-print(abs(test.test_losses - test.train_losses)) # в качестве меры будет использоваться данное отношение
+    @staticmethod
+    def get_residuals(nn_model,
+                      data,
+                      num_epochs: int = 5,
+                      n_splits: int = 15,
+                      threshold: int = 3,
+                      loss_function=nn.MSELoss(),
+                      plot: bool = False,
+                      all_outputs: bool = False):
+        """
+        This function gets anomalies via LSTM model
+        :param nn_model: model
+        :param data: time series
+        :param num_epochs: int: num epochs (default = 5)
+        :param n_splits: int: num splits of time series (default = 5)
+        :param threshold: int: threshold of std or iqr model (default = 3) recommended ~ 2,3
+        :param loss_function: loss function (default = MSELoss)
+        :param plot: bool:  Need plot residuals or not (default False)
+        :param all_outputs: bool: if you need list of actual/predict data on all time series splits (default False)
+        :return: pd.Series(array[True/False]) where True index is anomaly index
+        """
 
-get_idx_df = test.test_losses/test.train_losses
+        tm = TrainModel(nn_model=nn_model,
+                        data=data,
+                        num_epochs=num_epochs,
+                        n_splits=n_splits,
+                        loss_function=loss_function,
+                        plot=plot,
+                        all_outputs=all_outputs)
 
-print(iqr_model(get_idx_df, roll=True))
-res, _ = iqr_model(get_idx_df, roll=True)
+        # Отношение деления очень хорошо показывает разницу между тест и трейн мапе
 
-split_idx = res[res].index.values
+        get_idx_df = tm.test_losses/tm.train_losses
 
-# пофикси не-ролл std
+        print(iqr_model(get_idx_df, roll=True))
+        res, _ = iqr_model(get_idx_df, roll=True)
 
-tscv = TimeSeriesSplit(n_splits)
+        split_idx = res[res].index.values
 
-anomaly_idx = []
+        # пофикси не-ролл std
 
-# Тут все сломается если у тебя не будет ни одного сплит индекса
+        tscv = TimeSeriesSplit(n_splits)
 
-# ЛАДНО Я СДЕЛАЮ ГЛУПО НО РАБОЧЕ
+        anomaly_idx = []
 
-# ВООБЩЕ ГЭП МОЖЕТ И НЕ СЛУЧИТЬСЯ. НАДО ОБРАБОТАТЬ СЛУЧИЙ КОГДА У НАС ВСЕГО 1 ИДКС или 0
+        # Нужно подумать, что будет если сплитов мало и не зафиксируются аномилии (забить?)
 
-tmp_arr_for_gap = []
+        tmp_arr_for_gap = []
 
-for i, (train_idx, test_idx) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
+        for i, (train_idx, test_idx) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
 
-    for j in split_idx:
+            for j in split_idx:
 
-        if i == j:
+                if i == j:
 
-            anomaly_idx.extend(test_idx)
+                    anomaly_idx.extend(test_idx)
 
-            tmp_arr_for_gap.append(test_idx)
+                    tmp_arr_for_gap.append(test_idx)
 
-if len(split_idx) > 1:
+        if len(split_idx) > 1:
 
-    gap = abs(tmp_arr_for_gap[0][0] - tmp_arr_for_gap[1][0])
+            gap = abs(tmp_arr_for_gap[0][0] - tmp_arr_for_gap[1][0])
 
-anomaly_raw_idx = []
+        anomaly_raw_idx = []
 
-# Случий с двумя индексами обработан вроде
+        for key, val in enumerate(split_idx):
 
-for key, val in enumerate(split_idx):
+            data = abs(tm.act_test[val] - tm.test_predictions[val])
 
-    data = abs(test.act_test[val] - test.test_predictions[val])
+            anomaly_test, _ = std_model(data=data, threshold=threshold, roll=True)
 
-    anomaly_test, _ = std_model(data=data, roll=True)
+            if len(split_idx) > 1:
 
-    if len(split_idx) > 1:
+                anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
 
-        anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
+        tmp = np.array([anomaly_idx[i] for i in anomaly_raw_idx])
 
-    utils.anomalies_plot(data,
-                         anomalies=std_model(data, threshold=2, roll=True)[0],
-                         bounds=std_model(data, threshold=2, roll=True)[1])
+        an = np.zeros(len(df), dtype=bool)
 
-print(anomaly_raw_idx)
+        for i in tmp:
+            an[i] = True
 
-print(anomaly_idx)
+        return pd.Series(an)
 
-print(np.array([anomaly_idx[i] for i in anomaly_raw_idx]))
+    def __init__(self,
+                 nn_model,
+                 data,
+                 num_epochs: int = 5,
+                 n_splits: int = 5,
+                 threshold: int = 3,
+                 loss_function=nn.MSELoss(),
+                 plot: bool = False,
+                 all_outputs: bool = False):
 
-tmp = np.array([anomaly_idx[i] for i in anomaly_raw_idx])
+        super(TrainModel, self).__init__()
 
-an = np.zeros(len(df), dtype=float)
+        self.nn_model = nn_model
 
-for i in tmp:
-    an[i] = True
+        self.data = data
 
-print(pd.Series(an))
+        self.num_epochs = num_epochs
 
-utils.anomalies_plot(data=df.iloc[:, 1],
-                     anomalies=an)
+        self.n_splits = n_splits
 
-# utils.anomalies_plot(data=df.iloc[:, 1],
-#                      anomalies=std_model(data=df.iloc[:, 1], threshold=3, roll=True)[0],
-#                      bounds=std_model(data=df.iloc[:, 1], threshold=3, roll=True)[1])
+        self.threshold = threshold
 
-# обернуть все в функцию или класс, впрц рез готов, напиши readme.
+        self.loss_function = loss_function
+
+        self.plot = plot
+
+        self.all_outputs = all_outputs
+
+        self.anomalies = self.get_residuals(nn_model=nn_model,
+                                            data=data,
+                                            num_epochs=num_epochs,
+                                            n_splits=n_splits,
+                                            loss_function=loss_function,
+                                            plot=plot,
+                                            all_outputs=all_outputs)
+
+
+dataset = pd.read_csv('data/Data.csv', sep=';')
+
+df = dataset[['Time', 'x013']]
+
+a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=False, all_outputs=True)
