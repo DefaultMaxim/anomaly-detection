@@ -642,7 +642,7 @@ dataset = pd.read_csv('data/Data.csv', sep=';')
 
 df = dataset[['Time', 'x013']]
 
-a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False, show_print=False)
-
-print(a.anomalies)
+# a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False, show_print=False)
+#
+# print(a.anomalies)
 
