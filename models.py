@@ -239,12 +239,14 @@ class TrainModel(nn.Module, DataPrep):
     @staticmethod
     def train_one_epoch(nn_model,
                         train_loader,
-                        loss_function=nn.MSELoss()):
+                        loss_function=nn.MSELoss(),
+                        show_print: bool = False):
         """
         One epoch train function
         :param nn_model: model
         :param train_loader: loader from DataPrep class
         :param loss_function: loss function (default MSELoss)
+        :param show_print: bool: if you need print each epoch train loss and etc
         :return:
         """
         nn_model.train(True)
@@ -265,20 +267,25 @@ class TrainModel(nn.Module, DataPrep):
 
             if batch_index % 100 == 99:  # print every 100 batches
                 avg_loss_across_batches = running_loss / 100
-                print('Batch {0}, Loss: {1:.3f}'.format(batch_index + 1,
-                                                        avg_loss_across_batches))
+
+                if show_print:
+
+                    print('Batch {0}, Loss: {1:.3f}'.format(batch_index + 1,
+                                                            avg_loss_across_batches))
                 running_loss = 0.0
         print()
 
     @staticmethod
     def validate_one_epoch(nn_model,
                            test_loader,
-                           loss_function=nn.MSELoss()):
+                           loss_function=nn.MSELoss(),
+                           show_print: bool = False):
         """
         Validate one epoch function
         :param nn_model: model
         :param test_loader: test loader from class DataPrep
         :param loss_function: loss function (default MSELoss)
+        :param show_print: bool: if you need print each epoch train loss and etc
         :return:
         """
         nn_model.train(False)
@@ -294,9 +301,11 @@ class TrainModel(nn.Module, DataPrep):
 
         avg_loss_across_batches = running_loss / len(test_loader)
 
-        print('Val Loss: {0:.3f}'.format(avg_loss_across_batches))
-        print('***************************************************')
-        print()
+        if show_print:
+
+            print('Val Loss: {0:.3f}'.format(avg_loss_across_batches))
+            print('***************************************************')
+            print()
 
     def train_model(self,
                     nn_model,
@@ -305,7 +314,8 @@ class TrainModel(nn.Module, DataPrep):
                     n_splits: int = 5,
                     loss_function=nn.MSELoss(),
                     plot: bool = False,
-                    all_outputs: bool = False):
+                    all_outputs: bool = False,
+                    show_print: bool = False):
 
         """
         Training model function via time series split
@@ -316,6 +326,7 @@ class TrainModel(nn.Module, DataPrep):
         :param loss_function: loss function (default = MSELoss)
         :param plot: bool:  Need plot residuals or not (default False)
         :param all_outputs: bool: if you need list of actual/predict data on all time series splits (default False)
+        :param show_print: bool: if you need print each epoch train loss and etc
         :return:
         actual_train: list[list of values] or list[-1] of values whether all_outputs param,
         predict_train: list[list of values] or list[-1] of values whether all_outputs param,
@@ -343,7 +354,10 @@ class TrainModel(nn.Module, DataPrep):
             dd.append(DataPrep(data[:test_index[-1]], train_index[-1]))
 
             for epoch in range(num_epochs):
-                print(f'Epoch: {epoch + 1}')
+                if show_print:
+
+                    print(f'Epoch: {epoch + 1}')
+
                 self.train_one_epoch(nn_model, dd[i].train_loader, loss_function)
                 self.validate_one_epoch(nn_model, dd[i].test_loader, loss_function)
 
@@ -412,8 +426,10 @@ class TrainModel(nn.Module, DataPrep):
             train_losses.append(mape(new_y_train, train_predictions) * 100)
             test_losses.append(mape(new_y_test, test_predictions) * 100)
 
-            print(f'Train MAPE: {mape(new_y_train, train_predictions)},'
-                  f'Test MAPE: {mape(new_y_test, test_predictions)}')
+            if show_print:
+
+                print(f'Train MAPE: {mape(new_y_train, train_predictions)},'
+                      f'Test MAPE: {mape(new_y_test, test_predictions)}')
 
         train_losses = np.array(train_losses)
         test_losses = np.array(test_losses)
@@ -436,7 +452,8 @@ class TrainModel(nn.Module, DataPrep):
                  n_splits: int = 5,
                  loss_function=nn.MSELoss(),
                  plot: bool = False,
-                 all_outputs: bool = False):
+                 all_outputs: bool = False,
+                 show_print: bool = False):
 
         super().__init__()
 
@@ -454,6 +471,8 @@ class TrainModel(nn.Module, DataPrep):
 
         self.all_outputs = all_outputs
 
+        self.show_print = show_print
+
         self.act_train, \
         self.train_predictions, \
         self.act_test, \
@@ -465,7 +484,8 @@ class TrainModel(nn.Module, DataPrep):
                                             n_splits,
                                             loss_function,
                                             plot,
-                                            all_outputs)
+                                            all_outputs,
+                                            show_print)
 
 # в кратце - данная модель дропает мапе на трейне и на тесте на каждом сплите
 # далее - моделью iqr или std которые выше находим выбросы, запоминаем индексы сплита - это и есть аномалия.
@@ -486,7 +506,8 @@ class AnomalyLSTM(TrainModel):
                       threshold: int = 3,
                       loss_function=nn.MSELoss(),
                       plot: bool = False,
-                      all_outputs: bool = False):
+                      all_outputs: bool = False,
+                      show_print: bool = False):
         """
         This function gets anomalies via LSTM model
         :param nn_model: model
@@ -497,6 +518,7 @@ class AnomalyLSTM(TrainModel):
         :param loss_function: loss function (default = MSELoss)
         :param plot: bool:  Need plot residuals or not (default False)
         :param all_outputs: bool: if you need list of actual/predict data on all time series splits (default False)
+        :param show_print: bool: if you need print each epoch train loss and etc
         :return: pd.Series(array[True/False]) where True index is anomaly index
         """
 
@@ -506,7 +528,8 @@ class AnomalyLSTM(TrainModel):
                         n_splits=n_splits,
                         loss_function=loss_function,
                         plot=plot,
-                        all_outputs=all_outputs)
+                        all_outputs=all_outputs,
+                        show_print=show_print)
 
         # Отношение деления очень хорошо показывает разницу между тест и трейн мапе
 
@@ -582,7 +605,8 @@ class AnomalyLSTM(TrainModel):
                  threshold: int = 3,
                  loss_function=nn.MSELoss(),
                  plot: bool = False,
-                 all_outputs: bool = False):
+                 all_outputs: bool = False,
+                 show_print: bool = False):
 
         super(TrainModel, self).__init__()
 
@@ -602,18 +626,23 @@ class AnomalyLSTM(TrainModel):
 
         self.all_outputs = all_outputs
 
+        self.show_print = show_print
+
         self.anomalies = self.get_residuals(nn_model=nn_model,
                                             data=data,
                                             num_epochs=num_epochs,
                                             n_splits=n_splits,
                                             loss_function=loss_function,
                                             plot=plot,
-                                            all_outputs=all_outputs)
+                                            all_outputs=all_outputs,
+                                            show_print=show_print)
 
 
 dataset = pd.read_csv('data/Data.csv', sep=';')
 
 df = dataset[['Time', 'x013']]
 
-#a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False)
+a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False, show_print=False)
+
+print(a.anomalies)
 
