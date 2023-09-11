@@ -531,15 +531,27 @@ class AnomalyLSTM(TrainModel):
 
         anomaly_raw_idx = []
 
-        for key, val in enumerate(split_idx):
+        if all_outputs:
 
-            data = abs(tm.act_test[val] - tm.test_predictions[val])
+            for key, val in enumerate(split_idx):
+
+                data = abs(tm.act_test[val] - tm.test_predictions[val])
+
+                anomaly_test, _ = std_model(data=data, threshold=threshold, roll=True)
+
+                if len(split_idx) > 1:
+
+                    anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
+
+        else:
+
+            data = abs(tm.act_test - tm.test_predictions)
 
             anomaly_test, _ = std_model(data=data, threshold=threshold, roll=True)
 
             if len(split_idx) > 1:
 
-                anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
+                anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values)
 
         tmp = np.array([anomaly_idx[i] for i in anomaly_raw_idx])
 
@@ -591,4 +603,5 @@ dataset = pd.read_csv('data/Data.csv', sep=';')
 
 df = dataset[['Time', 'x013']]
 
-a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=False, all_outputs=True)
+a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False)
+
