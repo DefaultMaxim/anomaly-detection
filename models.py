@@ -432,8 +432,9 @@ class TrainModel(nn.Module, DataPrep):
 
             if show_print:
 
-                print(f'Train MAPE: {mape(new_y_train, train_predictions)},'
-                      f'Test MAPE: {mape(new_y_test, test_predictions)}')
+                print(f'Train MAPE2: {mape(new_y_train, train_predictions)},'
+                      f'Test MAPE: {mape(new_y_test, test_predictions)},'
+                      f'MAPE ratio: {mape(new_y_train, train_predictions)/mape(new_y_test, test_predictions)/mape(new_y_train, train_predictions)}')
 
         train_losses = np.array(train_losses)
         test_losses = np.array(test_losses)
@@ -537,15 +538,23 @@ class AnomalyLSTM(TrainModel):
 
         # Отношение деления очень хорошо показывает разницу между тест и трейн мапе
 
+        # upd. ладно. не очень хорошо, но мб это дело теста.
+
         get_idx_df = tm.test_losses/tm.train_losses
 
         if show_print:
 
-            print(iqr_model(get_idx_df, roll=True))
+            print(std_model(get_idx_df, threshold=threshold, roll=True))
 
-        res, _ = iqr_model(get_idx_df, roll=True)
+        res, _ = std_model(get_idx_df, threshold=threshold, roll=True)
 
-        split_idx = res[res].index.values
+        if any(res):
+
+            split_idx = res[res].index.values
+
+        else:
+
+            split_idx = np.array([np.argmax(get_idx_df)])
 
         # пофикси не-ролл std
 
@@ -557,7 +566,7 @@ class AnomalyLSTM(TrainModel):
 
         tmp_arr_for_gap = []
 
-        for i, (train_idx, test_idx) in enumerate(tscv.split(DataPrep(df, split_index=len(df)).X)):
+        for i, (train_idx, test_idx) in enumerate(tscv.split(DataPrep(data=data, split_index=len(data)).X)):
 
             for j in split_idx:
 
@@ -571,35 +580,36 @@ class AnomalyLSTM(TrainModel):
 
             gap = abs(tmp_arr_for_gap[0][0] - tmp_arr_for_gap[1][0])
 
+        else:
+
+            gap = 0
+
         anomaly_raw_idx = []
 
         if all_outputs:
 
             for key, val in enumerate(split_idx):
 
-                data = abs(tm.act_test[val] - tm.test_predictions[val])
+                ratio = abs(tm.test_predictions[val]/tm.act_test[val])
 
-                anomaly_test, _ = std_model(data=data, threshold=threshold, roll=True)
+                anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=True)
 
-                if len(split_idx) > 1:
-
-                    anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
+                anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
 
         else:
 
-            data = abs(tm.act_test - tm.test_predictions)
+            ratio = abs(tm.test_predictions/tm.act_test)
 
-            anomaly_test, _ = std_model(data=data, threshold=threshold, roll=True)
+            anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=True)
 
-            if len(split_idx) > 1:
-
-                anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values)
+            anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values)
 
         tmp = np.array([anomaly_idx[i] for i in anomaly_raw_idx])
 
-        an = np.zeros(len(df), dtype=bool)
+        an = np.zeros(len(data), dtype=bool)
 
         for i in tmp:
+
             an[i] = True
 
         return pd.Series(an)
@@ -643,13 +653,3 @@ class AnomalyLSTM(TrainModel):
                                             plot=plot,
                                             all_outputs=all_outputs,
                                             show_print=show_print)
-
-
-dataset = pd.read_csv('data/Data.csv', sep=';')
-
-df = dataset[['Time', 'x013']]
-
-# a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False, show_print=False)
-#
-# print(a.anomalies)
-
