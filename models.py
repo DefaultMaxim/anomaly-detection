@@ -273,7 +273,10 @@ class TrainModel(nn.Module, DataPrep):
                     print('Batch {0}, Loss: {1:.3f}'.format(batch_index + 1,
                                                             avg_loss_across_batches))
                 running_loss = 0.0
-        print()
+
+        if show_print:
+
+            print()
 
     @staticmethod
     def validate_one_epoch(nn_model,
@@ -354,6 +357,7 @@ class TrainModel(nn.Module, DataPrep):
             dd.append(DataPrep(data[:test_index[-1]], train_index[-1]))
 
             for epoch in range(num_epochs):
+
                 if show_print:
 
                     print(f'Epoch: {epoch + 1}')
@@ -535,7 +539,10 @@ class AnomalyLSTM(TrainModel):
 
         get_idx_df = tm.test_losses/tm.train_losses
 
-        print(iqr_model(get_idx_df, roll=True))
+        if show_print:
+
+            print(iqr_model(get_idx_df, roll=True))
+
         res, _ = iqr_model(get_idx_df, roll=True)
 
         split_idx = res[res].index.values
