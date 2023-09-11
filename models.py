@@ -49,8 +49,8 @@ def std_model(data, threshold: int = 3, roll: bool = False):
 
     else:
 
-        mean = data.mean()
-        std = data.std()
+        mean = np.mean(data)
+        std = np.std(data)
 
         high = mean + threshold * std
         low = mean - threshold * std
@@ -58,7 +58,13 @@ def std_model(data, threshold: int = 3, roll: bool = False):
         boarders = namedtuple('Bounds', ['high', 'low'])
         bounds = boarders(high, low)
 
-        anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
+        anomalies = np.zeros(len(data), dtype='bool')
+
+        for i in range(len(data)):
+
+            if data[i] > high or data[i] < low:
+
+                anomalies[i] = True
 
         return pd.Series(anomalies), bounds
 
@@ -100,16 +106,22 @@ def iqr_model(data, threshold=3, roll: bool = False):
 
     else:
 
-        iqr = data.quantile(0.75) - data.quantile(0.25)
+        iqr = np.quantile(data, 0.75) - np.quantile(data, 0.25)
 
-        high = data.quantile(0.75) + (iqr * threshold)
-        low = data.quantile(0.25) - (iqr * threshold)
+        high = np.quantile(data, 0.75) + (iqr * threshold)
+        low = np.quantile(data, 0.725) - (iqr * threshold)
 
         ntup = namedtuple('Bounds', ['high', 'low'])
 
         bounds = ntup(high, low)
 
-        anomalies = pd.concat([data > high, data < low], axis=1).any(axis=1)
+        anomalies = np.zeros(len(data), dtype='bool')
+
+        for i in range(len(data)):
+
+            if data[i] > high or data[i] < low:
+
+                anomalies[i] = True
 
         return pd.Series(anomalies), bounds
 
@@ -603,5 +615,5 @@ dataset = pd.read_csv('data/Data.csv', sep=';')
 
 df = dataset[['Time', 'x013']]
 
-a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False)
+#a = AnomalyLSTM(nn_model=ModelLSTM(1, 2, 1), data=df, num_epochs=5, n_splits=15, plot=True, all_outputs=False)
 
