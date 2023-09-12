@@ -28,8 +28,17 @@ Example LSTM-anomaly detection model:
 2. On each split from n_splits we make train/test data, and train/validate our model.
 3. On eeach split we compute train mape and test mape, where ratio $\frac{test_{mape}}{train_{mape}}$ is outlier (we can check it via iqr or std model) there is anomaly.
 
-__Example of work std model:__
+__Example of work LSTM model:__
 
 __Red x means anomalies.__
 
 ![lstm](https://github.com/DefaultMaxim/anomaly-detection/blob/master/examples/lstm_anomaly.png?raw=true)
+
+__Example SBERP anomaly detection via LSTM - model:__
+
+__Red x means anomalies.__
+
+![SBERP](https://github.com/DefaultMaxim/anomaly-detection/assets/112869928/b800d2bc-52e9-49fc-9ec2-97ba0823ad1b)
+
+
+
