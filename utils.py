@@ -88,7 +88,8 @@ def prepare_dataframe_for_lstm(data, n_steps):
     data.set_index('Time', inplace=True)
 
     for i in range(1, n_steps + 1):
-        data[f'param(t-{i})'] = data.iloc[:, 0].shift(i)
+
+        data = pd.concat([data, data.iloc[:, 0].shift(i).rename(f'param(t-{i})')], axis=1)
 
     data.dropna(inplace=True)
 
