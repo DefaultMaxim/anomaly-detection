@@ -4,9 +4,9 @@ Project for anomaly detection in time series.
 ---
 Technologies stack:
 ---
-1. NumPy
-2. Pandas
-3. PyTorch
+1. NumPy (ver. 1.24.2)
+2. Pandas (ver. 1.5.3)
+3. PyTorch (ver. 2.0.1+cpu)
 4. Matplotlib (for visualization)
 ---
 Example std-anomaly detection model:
