@@ -13,12 +13,17 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_absolute_percentage_error as mape
 
 
-def std_model(data, threshold: int = 3, roll: bool = False):
+def std_model(data,
+              threshold: int = 3,
+              roll: bool = False,
+              anomaly_tails: str = 'all'.upper()):
     """
     detect anomalies based on threshold*sigma rule
     :param data: data
     :param threshold: std threshold (usual from 2 to 5)
     :param roll: whether rolling model or not
+    :param anomaly_tails: cuts off low, high or both tails
+    ( all: abs(data) > bounds, high: data > high - anomaly, low: data < low)
     :return: anomalies : dataframe,
     bounds: namedtuple(high, low)
     """
@@ -38,8 +43,23 @@ def std_model(data, threshold: int = 3, roll: bool = False):
             high[key] = mean + threshold * std
             low[key] = mean - threshold * std
 
-            if data[key] > high[key] or data[key] < low[key]:
-                anomalies[key] = True
+            if anomaly_tails == 'all'.upper():
+
+                if data[key] > high[key] or data[key] < low[key]:
+
+                    anomalies[key] = True
+
+            elif anomaly_tails == 'high'.upper():
+
+                if data[key] > high[key]:
+
+                    anomalies[key] = True
+
+            elif anomaly_tails == 'low':
+
+                if data[key] < low[key]:
+
+                    anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
 
@@ -62,20 +82,39 @@ def std_model(data, threshold: int = 3, roll: bool = False):
 
         for i in range(len(data)):
 
-            if data[i] > high or data[i] < low:
+            if anomaly_tails == 'all'.upper():
 
-                anomalies[i] = True
+                if data[i] > high or data[i] < low:
+
+                    anomalies[i] = True
+
+            elif anomaly_tails == 'high'.upper():
+
+                if data[i] > high:
+
+                    anomalies[i] = True
+
+            elif anomaly_tails == 'low':
+
+                if data[i] < low:
+
+                    anomalies[i] = True
 
         return pd.Series(anomalies), bounds
 
 
-def iqr_model(data, threshold=3, roll: bool = False):
+def iqr_model(data,
+              threshold=3,
+              roll: bool = False,
+              anomaly_tails: str = 'all'.upper()):
     """
 
     inter quartile range model
     :param data:data
     :param threshold:model threshold
     :param roll: True/False whether rolling model or not
+    :param anomaly_tails: cuts off low, high or both tails
+    ( all: abs(data) > bounds, high: data > high - anomaly, low: data < low)
     :return:anomalies, bounds
 
     """
@@ -95,8 +134,20 @@ def iqr_model(data, threshold=3, roll: bool = False):
 
             low[key] = np.quantile(data[:key + 1], 0.25) - (iqr * threshold)
 
-            if data[key] > high[key] or data[key] < low[key]:
-                anomalies[key] = True
+            if anomaly_tails == 'all'.upper():
+
+                if data[key] > high[key] or data[key] < low[key]:
+                    anomalies[key] = True
+
+            elif anomaly_tails == 'high'.upper():
+
+                if data[key] > high[key]:
+                    anomalies[key] = True
+
+            elif anomaly_tails == 'low':
+
+                if data[key] < low[key]:
+                    anomalies[key] = True
 
         ntup = namedtuple('Bounds', ['high', 'low'])
 
@@ -119,9 +170,20 @@ def iqr_model(data, threshold=3, roll: bool = False):
 
         for i in range(len(data)):
 
-            if data[i] > high or data[i] < low:
+            if anomaly_tails == 'all'.upper():
 
-                anomalies[i] = True
+                if data[i] > high or data[i] < low:
+                    anomalies[i] = True
+
+            elif anomaly_tails == 'high'.upper():
+
+                if data[i] > high:
+                    anomalies[i] = True
+
+            elif anomaly_tails == 'low':
+
+                if data[i] < low:
+                    anomalies[i] = True
 
         return pd.Series(anomalies), bounds
 
@@ -352,7 +414,9 @@ class TrainModel(nn.Module, DataPrep):
         act_tests = []
         pred_tests = []
 
-        for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(data, split_index=len(data)).X)):
+        for i, (train_index, test_index) in enumerate(tscv.split(DataPrep(data,
+                                                                          split_index=len(data),
+                                                                          n_steps=150).X)):
 
             dd.append(DataPrep(data[:test_index[-1]], train_index[-1]))
 
@@ -362,8 +426,15 @@ class TrainModel(nn.Module, DataPrep):
 
                     print(f'Epoch: {epoch + 1}')
 
-                self.train_one_epoch(nn_model, dd[i].train_loader, loss_function)
-                self.validate_one_epoch(nn_model, dd[i].test_loader, loss_function)
+                self.train_one_epoch(nn_model,
+                                     dd[i].train_loader,
+                                     loss_function,
+                                     show_print)
+
+                self.validate_one_epoch(nn_model,
+                                        dd[i].test_loader,
+                                        loss_function,
+                                        show_print)
 
             with torch.no_grad():
 
@@ -546,7 +617,7 @@ class AnomalyLSTM(TrainModel):
 
             print(std_model(get_idx_df, threshold=threshold, roll=True))
 
-        res, _ = std_model(get_idx_df, threshold=threshold, roll=True)
+        res, _ = std_model(get_idx_df, threshold=2, roll=True, anomaly_tails='high')
 
         if any(res):
 
@@ -592,7 +663,7 @@ class AnomalyLSTM(TrainModel):
 
                 ratio = abs(tm.test_predictions[val]/tm.act_test[val])
 
-                anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=True)
+                anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=False)
 
                 anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
 
@@ -649,6 +720,7 @@ class AnomalyLSTM(TrainModel):
                                             data=data,
                                             num_epochs=num_epochs,
                                             n_splits=n_splits,
+                                            threshold=threshold,
                                             loss_function=loss_function,
                                             plot=plot,
                                             all_outputs=all_outputs,
