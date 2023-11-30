@@ -160,7 +160,7 @@ def iqr_model(data,
         iqr = np.quantile(data, 0.75) - np.quantile(data, 0.25)
 
         high = np.quantile(data, 0.75) + (iqr * threshold)
-        low = np.quantile(data, 0.725) - (iqr * threshold)
+        low = np.quantile(data, 0.25) - (iqr * threshold)
 
         ntup = namedtuple('Bounds', ['high', 'low'])
 
