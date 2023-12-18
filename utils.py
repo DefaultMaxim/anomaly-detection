@@ -77,8 +77,9 @@ def anomalies_plot(data, anomalies, bounds: namedtuple = None):
 
         if anomalies[i]:
 
-            ax.scatter(i, data[i], color="red", marker='x', label='1880-1999')
-
+            ax.scatter(i, data[i], color="black", marker='X', label='1880-1999', linewidths=4.5)
+    plt.xlabel("Временная метка")
+    plt.ylabel("Температура")
     plt.show()
 
 

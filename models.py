@@ -144,7 +144,7 @@ def iqr_model(data,
                 if data[key] > high[key]:
                     anomalies[key] = True
 
-            elif anomaly_tails == 'low':
+            elif anomaly_tails == 'low'.upper():
 
                 if data[key] < low[key]:
                     anomalies[key] = True
@@ -160,7 +160,7 @@ def iqr_model(data,
         iqr = np.quantile(data, 0.75) - np.quantile(data, 0.25)
 
         high = np.quantile(data, 0.75) + (iqr * threshold)
-        low = np.quantile(data, 0.725) - (iqr * threshold)
+        low = np.quantile(data, 0.25) - (iqr * threshold)
 
         ntup = namedtuple('Bounds', ['high', 'low'])
 
@@ -375,6 +375,7 @@ class TrainModel(nn.Module, DataPrep):
     def train_model(self,
                     nn_model,
                     data,
+                    thr_model,
                     num_epochs: int = 5,
                     n_splits: int = 5,
                     loss_function=nn.MSELoss(),
@@ -524,6 +525,7 @@ class TrainModel(nn.Module, DataPrep):
     def __init__(self,
                  nn_model,
                  data,
+                 thr_model = std_model,
                  num_epochs: int = 5,
                  n_splits: int = 5,
                  loss_function=nn.MSELoss(),
@@ -536,6 +538,8 @@ class TrainModel(nn.Module, DataPrep):
         self.nn_model = nn_model
 
         self.data = data
+
+        self.thr_model = thr_model,
 
         self.num_epochs = num_epochs
 
@@ -556,6 +560,7 @@ class TrainModel(nn.Module, DataPrep):
         self.train_losses, \
         self.test_losses = self.train_model(nn_model,
                                             data,
+                                            thr_model,
                                             num_epochs,
                                             n_splits,
                                             loss_function,
@@ -577,6 +582,7 @@ class AnomalyLSTM(TrainModel):
     @staticmethod
     def get_residuals(nn_model,
                       data,
+                      thr_model,
                       num_epochs: int = 5,
                       n_splits: int = 15,
                       threshold: int = 3,
@@ -600,6 +606,7 @@ class AnomalyLSTM(TrainModel):
 
         tm = TrainModel(nn_model=nn_model,
                         data=data,
+                        thr_model=thr_model, 
                         num_epochs=num_epochs,
                         n_splits=n_splits,
                         loss_function=loss_function,
@@ -612,12 +619,17 @@ class AnomalyLSTM(TrainModel):
         # upd. ладно. не очень хорошо, но мб это дело теста.
 
         get_idx_df = tm.test_losses/tm.train_losses
+        plt.figure(figsize=(14, 8))
+        plt.plot(get_idx_df)
+        plt.xlabel('Номер разбиения')
+        plt.ylabel('Знанчение отношения')
+
 
         if show_print:
 
-            print(std_model(get_idx_df, threshold=threshold, roll=True))
+            print(thr_model(get_idx_df, threshold=threshold, roll=True))
 
-        res, _ = std_model(get_idx_df, threshold=2, roll=True, anomaly_tails='high')
+        res, _ = thr_model(get_idx_df, threshold=2, roll=True, anomaly_tails='high')
 
         if any(res):
 
@@ -663,7 +675,7 @@ class AnomalyLSTM(TrainModel):
 
                 ratio = abs(tm.test_predictions[val]/tm.act_test[val])
 
-                anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=False)
+                anomaly_test, _ = thr_model(data=ratio, threshold=threshold, roll=False)
 
                 anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values + gap * key)
 
@@ -671,7 +683,7 @@ class AnomalyLSTM(TrainModel):
 
             ratio = abs(tm.test_predictions/tm.act_test)
 
-            anomaly_test, _ = std_model(data=ratio, threshold=threshold, roll=True)
+            anomaly_test, _ = thr_model(data=ratio, threshold=threshold, roll=True)
 
             anomaly_raw_idx.extend(anomaly_test[anomaly_test].index.values)
 
@@ -688,6 +700,7 @@ class AnomalyLSTM(TrainModel):
     def __init__(self,
                  nn_model,
                  data,
+                 thr_model = std_model,
                  num_epochs: int = 5,
                  n_splits: int = 5,
                  threshold: int = 3,
@@ -701,6 +714,8 @@ class AnomalyLSTM(TrainModel):
         self.nn_model = nn_model
 
         self.data = data
+
+        self.thr_model = thr_model
 
         self.num_epochs = num_epochs
 
@@ -718,6 +733,7 @@ class AnomalyLSTM(TrainModel):
 
         self.anomalies = self.get_residuals(nn_model=nn_model,
                                             data=data,
+                                            thr_model=thr_model,
                                             num_epochs=num_epochs,
                                             n_splits=n_splits,
                                             threshold=threshold,
