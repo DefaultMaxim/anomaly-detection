@@ -21,7 +21,7 @@ def std_model(data,
     detect anomalies based on threshold*sigma rule
     :param data: data
     :param threshold: std threshold (usual from 2 to 5)
-    :param roll: whether rolling model or not
+    :param roll: is there a rolling model or not
     :param anomaly_tails: cuts off low, high or both tails
     ( all: abs(data) > bounds, high: data > high - anomaly, low: data < low)
     :return: anomalies : dataframe,
@@ -43,19 +43,19 @@ def std_model(data,
             high[key] = mean + threshold * std
             low[key] = mean - threshold * std
 
-            if anomaly_tails == 'all'.upper():
+            if anomaly_tails.upper() == 'all'.upper():
 
                 if data[key] > high[key] or data[key] < low[key]:
 
                     anomalies[key] = True
 
-            elif anomaly_tails == 'high'.upper():
+            elif anomaly_tails.upper() == 'high'.upper():
 
                 if data[key] > high[key]:
 
                     anomalies[key] = True
 
-            elif anomaly_tails == 'low':
+            elif anomaly_tails.upper() == 'low':
 
                 if data[key] < low[key]:
 
@@ -82,19 +82,19 @@ def std_model(data,
 
         for i in range(len(data)):
 
-            if anomaly_tails == 'all'.upper():
+            if anomaly_tails.upper() == 'all'.upper():
 
                 if data[i] > high or data[i] < low:
 
                     anomalies[i] = True
 
-            elif anomaly_tails == 'high'.upper():
+            elif anomaly_tails.upper() == 'high'.upper():
 
                 if data[i] > high:
 
                     anomalies[i] = True
 
-            elif anomaly_tails == 'low':
+            elif anomaly_tails.upper() == 'low'.upper():
 
                 if data[i] < low:
 
@@ -112,7 +112,7 @@ def iqr_model(data,
     inter quartile range model
     :param data:data
     :param threshold:model threshold
-    :param roll: True/False whether rolling model or not
+    :param roll: True/False is there a rolling model or not
     :param anomaly_tails: cuts off low, high or both tails
     ( all: abs(data) > bounds, high: data > high - anomaly, low: data < low)
     :return:anomalies, bounds
@@ -134,17 +134,17 @@ def iqr_model(data,
 
             low[key] = np.quantile(data[:key + 1], 0.25) - (iqr * threshold)
 
-            if anomaly_tails == 'all'.upper():
+            if anomaly_tails.upper() == 'all'.upper():
 
                 if data[key] > high[key] or data[key] < low[key]:
                     anomalies[key] = True
 
-            elif anomaly_tails == 'high'.upper():
+            elif anomaly_tails.upper() == 'high'.upper():
 
                 if data[key] > high[key]:
                     anomalies[key] = True
 
-            elif anomaly_tails == 'low'.upper():
+            elif anomaly_tails.upper() == 'low'.upper():
 
                 if data[key] < low[key]:
                     anomalies[key] = True
@@ -170,17 +170,17 @@ def iqr_model(data,
 
         for i in range(len(data)):
 
-            if anomaly_tails == 'all'.upper():
+            if anomaly_tails.upper() == 'all'.upper():
 
                 if data[i] > high or data[i] < low:
                     anomalies[i] = True
 
-            elif anomaly_tails == 'high'.upper():
+            elif anomaly_tails.upper() == 'high'.upper():
 
                 if data[i] > high:
                     anomalies[i] = True
 
-            elif anomaly_tails == 'low':
+            elif anomaly_tails.upper() == 'low':
 
                 if data[i] < low:
                     anomalies[i] = True
@@ -287,11 +287,6 @@ class DataPrep(TimeSeriesDataset):
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
 
-# dataset = pd.read_csv('data/Data.csv', sep=';')
-# df = dataset[['Time', 'x013']]
-# model = ModelLSTM(1, 8, 4)
-
-
 class TrainModel(nn.Module, DataPrep):
 
     """
@@ -394,10 +389,10 @@ class TrainModel(nn.Module, DataPrep):
         :param all_outputs: bool: if you need list of actual/predict data on all time series splits (default False)
         :param show_print: bool: if you need print each epoch train loss and etc
         :return:
-        actual_train: list[list of values] or list[-1] of values whether all_outputs param,
-        predict_train: list[list of values] or list[-1] of values whether all_outputs param,
-        actual_test: list[list of values] or list[-1] of values whether all_outputs param,
-        predict_tests: list[list of values] or list[-1] of values whether all_outputs param,
+        actual_train: list[list of values] or list[-1] of values depending on whether the all_outputs param,
+        predict_train: list[list of values] or list[-1] of values depending on whether the all_outputs param,
+        actual_test: list[list of values] or list[-1] of values depending on whether the all_outputs param,
+        predict_tests: list[list of values] or list[-1] of values depending on whether the all_outputs param,
         train_losses: list of train losses,
         test_losses: list of test losses
         """
@@ -568,15 +563,6 @@ class TrainModel(nn.Module, DataPrep):
                                             all_outputs,
                                             show_print)
 
-# в кратце - данная модель дропает мапе на трейне и на тесте на каждом сплите
-# далее - моделью iqr или std которые выше находим выбросы, запоминаем индексы сплита - это и есть аномалия.
-
-
-# тут как то сложно все... норм если тресхолд на стд моделе ~ 2, на 3 уже как то плохо работает
-# есть подозрение, что оптимально - 1, надо тестить. Условно под хорошую модель like LSTM(1, 5, 4) можно и 1
-# со сплитами тоже загадка, но надо тестить, оптимально работает с n_splits = 15, Model(1, 2, 1)
-
-
 class AnomalyLSTM(TrainModel):
 
     @staticmethod
@@ -586,6 +572,7 @@ class AnomalyLSTM(TrainModel):
                       num_epochs: int = 5,
                       n_splits: int = 15,
                       threshold: int = 3,
+                      ratio: str = 'div'.upper(),
                       loss_function=nn.MSELoss(),
                       plot: bool = False,
                       all_outputs: bool = False,
@@ -597,6 +584,7 @@ class AnomalyLSTM(TrainModel):
         :param num_epochs: int: num epochs (default = 5)
         :param n_splits: int: num splits of time series (default = 5)
         :param threshold: int: threshold of std or iqr model (default = 3) recommended ~ 2,3
+        :param ratio: str: outlier ratio 'div' or 'abs' (default = 'div')
         :param loss_function: loss function (default = MSELoss)
         :param plot: bool:  Need plot residuals or not (default False)
         :param all_outputs: bool: if you need list of actual/predict data on all time series splits (default False)
@@ -614,15 +602,22 @@ class AnomalyLSTM(TrainModel):
                         all_outputs=all_outputs,
                         show_print=show_print)
 
-        # Отношение деления очень хорошо показывает разницу между тест и трейн мапе
+        #отношение test/train
+        if ratio.upper() == 'div'.upper():
 
-        # upd. ладно. не очень хорошо, но мб это дело теста.
+            get_idx_df = tm.test_losses/tm.train_losses
 
-        get_idx_df = tm.test_losses/tm.train_losses
-        plt.figure(figsize=(14, 8))
-        plt.plot(get_idx_df)
-        plt.xlabel('Номер разбиения')
-        plt.ylabel('Знанчение отношения')
+        #отношение |train - test|
+        if ratio.upper() == 'abs'.upper():
+
+            get_idx_df =  abs(tm.test_losses - tm.train_losses)
+
+        if plot:
+            
+            plt.figure(figsize=(14, 8))
+            plt.plot(get_idx_df)
+            plt.xlabel('Номер разбиения')
+            plt.ylabel('Знанчение отношения')
 
 
         if show_print:
@@ -639,13 +634,9 @@ class AnomalyLSTM(TrainModel):
 
             split_idx = np.array([np.argmax(get_idx_df)])
 
-        # пофикси не-ролл std
-
         tscv = TimeSeriesSplit(n_splits)
 
         anomaly_idx = []
-
-        # Нужно подумать, что будет если сплитов мало и не зафиксируются аномилии (забить?)
 
         tmp_arr_for_gap = []
 
@@ -704,6 +695,7 @@ class AnomalyLSTM(TrainModel):
                  num_epochs: int = 5,
                  n_splits: int = 5,
                  threshold: int = 3,
+                 ratio: str = 'div'.upper(),
                  loss_function=nn.MSELoss(),
                  plot: bool = False,
                  all_outputs: bool = False,
@@ -723,6 +715,8 @@ class AnomalyLSTM(TrainModel):
 
         self.threshold = threshold
 
+        self.ratio = ratio.upper()
+
         self.loss_function = loss_function
 
         self.plot = plot
@@ -737,6 +731,7 @@ class AnomalyLSTM(TrainModel):
                                             num_epochs=num_epochs,
                                             n_splits=n_splits,
                                             threshold=threshold,
+                                            ratio = ratio,
                                             loss_function=loss_function,
                                             plot=plot,
                                             all_outputs=all_outputs,
